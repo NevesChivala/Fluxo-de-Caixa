@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fluxo de Caixa Diário - NCHIVALA</title>
+
+  <!-- Bootstrap CSS (CDN) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- SheetJS (XLSX) para exportar Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root{
+      --bg: #ffffff;
+      --muted: #6c757d;
+      --blue: #0d6efd; /* principal */
+      --blue-soft: rgba(13,110,253,0.08);
+      --card-shadow: 0 6px 18px rgba(14,30,37,0.08);
+      --card-shadow-2: 0 3px 8px rgba(14,30,37,0.06);
+      --radius: 12px;
+    }
+    html,body{height:100%;}
+    body{
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg, #f7f9fb 0%, #ffffff 100%);
+      padding: 22px 12px;
+      color: #1f2937;
+    }
+
+    .app-wrap{
+      max-width:1200px;
+      margin: 0 auto;
+    }
+
+    .topbar{
+      background: var(--bg);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--card-shadow);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .brand {
+      display:flex;
+      gap:12px;
+      align-items:center;
+    }
+    .brand .logo {
+      width:56px;
+      height:56px;
+      border-radius:10px;
+      background: linear-gradient(135deg, var(--blue), #00a3ff);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:white;
+      font-weight:700;
+      box-shadow: var(--card-shadow-2);
+      font-size:18px;
+    }
+    .brand h1{
+      font-size:18px;
+      margin:0;
+      line-height:1.05;
+    }
+    .brand p{margin:0;font-size:12px;color:var(--muted)}
+
+    .controls { display:flex; gap:8px; align-items:center; }
+
+    .card {
+      background: var(--bg);
+      border-radius: 12px;
+      box-shadow: var(--card-shadow-2);
+      border: 1px solid rgba(15,23,42,0.03);
+    }
+
+    /* Layout */
+    .main-grid{
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 18px;
+      margin-top:18px;
+    }
+
+    @media (max-width: 900px){
+      .main-grid{ grid-template-columns: 1fr; }
+      .brand .logo{ width:46px;height:46px; font-size:16px;}
+    }
+
+    form .form-control, form .form-select{
+      border-radius:10px;
+    }
+
+    .summary {
+      padding:12px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .summary .box {
+      background: linear-gradient(180deg,#ffffff,#fbfdff);
+      padding:8px 12px;
+      border-radius:10px;
+      min-width:110px;
+      text-align:center;
+      box-shadow: var(--card-shadow-2);
+    }
+    .summary .label { font-size:12px; color:var(--muted); margin-bottom:4px; display:block; }
+    .summary .value { font-weight:700; font-size:16px; color:#0b3a66; }
+
+    /* Table */
+    .table thead th { position: sticky; top:0; background: white; z-index:1; }
+    .table td, .table th { vertical-align: middle; }
+    .table .actions button { padding: 0 .45rem; font-size:.85rem; }
+
+    .charts {
+      display:flex;
+      gap:12px;
+      flex-direction:column;
+      padding:12px;
+    }
+
+    .chart-card {
+      padding:12px;
+      border-radius:10px;
+      background: linear-gradient(180deg,#ffffff,#fbfdff);
+      box-shadow: var(--card-shadow-2);
+    }
+
+    /* Buttons */
+    .btn-primary {
+      background: linear-gradient(180deg,var(--blue), #0069d6);
+      border: none;
+      box-shadow: 0 6px 18px rgba(13,110,253,0.12);
+      border-radius:10px;
+      padding:10px 14px;
+    }
+    .btn-outline {
+      border-radius:10px;
+      padding:8px 12px;
+    }
+
+    footer { margin-top:16px; font-size:12px; color:var(--muted); text-align:center; }
+
+    /* subtle hover for rows */
+    .table tbody tr:hover { background: rgba(13,110,253,0.03); }
+
+    /* small helpers */
+    .muted { color:var(--muted); font-size:13px; }
+    .money { font-weight:700; color:#0b3a66; }
+  </style>
+</head>
+<body>
+  <div class="app-wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">NC</div>
+        <div>
+          <h1>Fluxo de Caixa Diário</h1>
+          <p>NCHIVALA-COMÉRCIO E PRESTAÇÃO DE SERVIÇOS (SU).LDA
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="btnExportXLSX" class="btn btn-primary btn-sm">Exportar .xlsx</button>
+        <button id="btnExportCSV" class="btn btn-outline btn-sm">Exportar .csv</button>
+        <button id="btnBackup" class="btn btn-outline btn-sm">Backup JSON</button>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <!-- Left: Form + Resumo + Import -->
+      <div>
+        <div class="card p-3 mb-3">
+          <h5 class="mb-2">Adicionar / Editar Movimento</h5>
+          <form id="formMov" onsubmit="return saveMovimento();">
+            <input type="hidden" id="movId" value="">
+            <div class="mb-2">
+              <label class="form-label">Data</label>
+              <input id="inputData" type="date" class="form-control" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Descrição</label>
+              <input id="inputDesc" type="text" class="form-control" placeholder="Ex: Venda - Cliente A">
+            </div>
+            <div class="row">
+              <div class="col-6 mb-2">
+                <label class="form-label">Tipo</label>
+                <select id="inputTipo" class="form-select" required>
+                  <option value="Entrada">Entrada</option>
+                  <option value="Saída">Saída</option>
+                </select>
+              </div>
+              <div class="col-6 mb-2">
+                <label class="form-label">Categoria</label>
+                <input id="inputCat" type="text" class="form-control" placeholder="Vendas / Salários">
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Valor</label>
+              <input id="inputValor" type="number" step="0.01" class="form-control" required>
+            </div>
+            <div class="d-grid gap-2">
+              <button id="btnSave" type="submit" class="btn btn-primary">Guardar</button>
+              <button id="btnClear" type="button" class="btn btn-outline btn-sm" onclick="clearForm()">Limpar</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card summary mb-3">
+          <div class="box">
+            <div class="label">Entradas</div>
+            <div id="totalEntradas" class="value">0,00</div>
+          </div>
+          <div class="box">
+            <div class="label">Saídas</div>
+            <div id="totalSaidas" class="value">0,00</div>
+          </div>
+          <div class="box">
+            <div class="label">Saldo Atual </div> 
+            <div id="saldoAtual" class="value">0,00</div>
+          </div>
+        </div>
+
+        <div class="card p-3">
+          <h6 class="mb-2">Importar / Restaurar</h6>
+          <div class="mb-2">
+            <input id="importFile" type="file" accept=".json,.csv" class="form-control form-control-sm" />
+          </div>
+          <div class="d-grid gap-2">
+            <button id="btnImport" class="btn btn-outline btn-sm">Importar JSON/CSV</button>
+            <button id="btnReset" class="btn btn-outline btn-sm text-danger">Apagar todos os dados</button>
+          </div>
+          <p class="muted mt-2 mb-0">Os dados ficam armazenados no teu navegador (localStorage). Exporta para backup.</p>
+        </div>
+      </div>
+
+      <!-- Right: Table + Charts -->
+      <div>
+        <div class="card p-2 mb-3">
+          <h6 class="px-2">Movimentos (últimos 500)</h6>
+          <div style="max-height:420px; overflow:auto;">
+            <table id="tblMovimentos" class="table table-sm table-striped mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th class="text-end">Valor</th><th class="text-end">Saldo Acum.</th><th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card p-3 charts">
+          <div class="chart-card">
+            <canvas id="chartSaldo" style="width:100%; height:220px;"></canvas>
+          </div>
+          <div class="chart-card">
+            <canvas id="chartEntradasSaidas" style="width:100%; height:220px;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Aplicativo offline • Dados guardados no navegador (localStorage) • Desenvolvido para uso interno pela NCHIVALA</footer>
+  </div>
+
+  <!-- Bootstrap JS (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  /************************************************************************
+   * Fluxo de Caixa — App single-file (JS)
+   * Guarda: localStorage (chave: 'fc_movimentos_v1')
+   * Funcionalidades: CRUD, gráficos, export XLSX/CSV/JSON, import JSON/CSV
+   ************************************************************************/
+
+  const STORAGE_KEY = 'fc_movimentos_v1';
+  const MAX_SHOW = 500;
+  let movimentos = [];
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // eventos
+    document.getElementById('btnExportXLSX').addEventListener('click', exportXLSX);
+    document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+    document.getElementById('btnBackup').addEventListener('click', backupJSON);
+    document.getElementById('btnImport').addEventListener('click', importFile);
+    document.getElementById('btnReset').addEventListener('click', resetAll);
+
+    loadFromStorage();
+    renderAll();
+  });
+
+  function uid() {
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
+  }
+
+  function formatNumber(v) {
+    return Number(v).toLocaleString('pt-PT', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  function parseDateInput(value) {
+    if (!value) return '';
+    const p = value.split('-');
+    if (p.length !== 3) return value;
+    return `${p[2]}/${p[1]}/${p[0]}`;
+  }
+
+  function dateToKey(dstr) {
+    const parts = dstr.split('/');
+    if (parts.length !== 3) return dstr;
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+
+  function loadFromStorage() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { movimentos = []; return; }
+    try {
+      movimentos = JSON.parse(raw);
+      movimentos.forEach(m => m.valor = Number(m.valor));
+    } catch(e) {
+      console.error('Erro ao ler storage:', e);
+      movimentos = [];
+    }
+  }
+
+  function saveToStorage() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(movimentos));
+  }
+
+  function saveMovimento() {
+    const id = document.getElementById('movId').value;
+    const dataVal = document.getElementById('inputData').value;
+    const data = parseDateInput(dataVal);
+    const descricao = document.getElementById('inputDesc').value.trim();
+    const tipo = document.getElementById('inputTipo').value;
+    const categoria = document.getElementById('inputCat').value.trim();
+    const valor = Number(document.getElementById('inputValor').value || 0);
+
+    if (!data || !tipo || isNaN(valor)) { alert('Preencha a data, tipo e valor.'); return false; }
+    if (valor <= 0) { alert('Valor deve ser maior que zero.'); return false; }
+
+    if (id) {
+      const idx = movimentos.findIndex(m => m.id === id);
+      if (idx >= 0) {
+        movimentos[idx] = { id, data, descricao, tipo, categoria, valor };
+      }
+    } else {
+      movimentos.push({ id: uid(), data, descricao, tipo, categoria, valor });
+    }
+    saveToStorage();
+    clearForm();
+    renderAll();
+    return false;
+  }
+
+  function editarMov(id) {
+    const m = movimentos.find(x => x.id === id);
+    if (!m) return;
+    const parts = m.data.split('/');
+    const inputDate = (parts.length===3) ? `${parts[2]}-${parts[1]}-${parts[0]}` : '';
+    document.getElementById('movId').value = m.id;
+    document.getElementById('inputData').value = inputDate;
+    document.getElementById('inputDesc').value = m.descricao;
+    document.getElementById('inputTipo').value = m.tipo;
+    document.getElementById('inputCat').value = m.categoria;
+    document.getElementById('inputValor').value = m.valor;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function apagarMov(id) {
+    if (!confirm('Eliminar este movimento?')) return;
+    movimentos = movimentos.filter(m => m.id !== id);
+    saveToStorage();
+    renderAll();
+  }
+
+  function clearForm() {
+    document.getElementById('movId').value = "";
+    document.getElementById('inputData').value = "";
+    document.getElementById('inputDesc').value = "";
+    document.getElementById('inputTipo').value = "Entrada";
+    document.getElementById('inputCat').value = "";
+    document.getElementById('inputValor').value = "";
+  }
+
+  function computeAndRenderTable() {
+    const sorted = [...movimentos].sort((a,b) => {
+      const da = dateToKey(a.data), db = dateToKey(b.data);
+      if (da < db) return -1;
+      if (da > db) return 1;
+      return a.id < b.id ? -1 : 1;
+    });
+
+    let saldo = 0;
+    const rows = sorted.map(s => {
+      const sinal = (s.tipo === 'Entrada') ? 1 : -1;
+      const valor_liquido = Number(s.valor) * sinal;
+      saldo += valor_liquido;
+      return { ...s, valor_liquido, saldo_acumulado: Number(saldo) };
+    });
+
+    const tbody = document.querySelector('#tblMovimentos tbody');
+    tbody.innerHTML = '';
+    const show = rows.slice(-MAX_SHOW);
+    for (let r of show) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.data}</td>
+                      <td>${escapeHtml(r.descricao)}</td>
+                      <td>${r.tipo}</td>
+                      <td>${escapeHtml(r.categoria)}</td>
+                      <td class="text-end">${formatNumber(r.valor)}</td>
+                      <td class="text-end">${formatNumber(r.saldo_acumulado)}</td>
+                      <td class="text-end">
+                        <button class="btn btn-sm btn-link" onclick="editarMov('${r.id}')">Editar</button>
+                        <button class="btn btn-sm btn-link text-danger" onclick="apagarMov('${r.id}')">Apagar</button>
+                      </td>`;
+      tbody.appendChild(tr);
+    }
+
+    const entradas = rows.filter(x => x.valor > 0 && x.tipo === 'Entrada').reduce((a,b)=>a+Number(b.valor),0);
+    const saidas = rows.filter(x => x.valor > 0 && x.tipo === 'Saída').reduce((a,b)=>a+Number(b.valor),0);
+    const saldoAtual = rows.length ? rows[rows.length-1].saldo_acumulado : 0;
+
+    document.getElementById('totalEntradas').textContent = formatNumber(entradas);
+    document.getElementById('totalSaidas').textContent = formatNumber(saidas);
+    document.getElementById('saldoAtual').textContent = formatNumber(saldoAtual) + '';
+
+    return { rows, daily: aggregateDaily(rows) };
+  }
+
+  function renderAll() {
+    const { rows, daily } = computeAndRenderTable();
+    renderCharts(daily);
+  }
+
+  function aggregateDaily(rows) {
+    const map = {};
+    for (let r of rows) {
+      const key = dateToKey(r.data);
+      if (!map[key]) map[key] = 0;
+      const sinal = (r.tipo === 'Entrada') ? 1 : -1;
+      map[key] += Number(r.valor) * sinal;
+    }
+    const keys = Object.keys(map).sort();
+    const labels = [], values = [], acumulado = [];
+    let s = 0;
+    for (let k of keys) {
+      const v = map[k];
+      s += v;
+      const parts = k.split('-');
+      labels.push(parts[2] + '/' + parts[1] + '/' + parts[0]);
+      values.push(v);
+      acumulado.push(s);
+    }
+    return { labels, values, acumulado, map };
+  }
+
+  let chartSaldo = null;
+  let chartEntradasSaidas = null;
+
+  function renderCharts(daily) {
+    const ctx1 = document.getElementById('chartSaldo').getContext('2d');
+    if (chartSaldo) chartSaldo.destroy();
+    chartSaldo = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels: daily.labels,
+        datasets: [{
+          label: 'Saldo Acumulado (Kz)',
+          data: daily.acumulado,
+          tension: 0.3,
+          pointRadius: 4,
+          borderWidth: 2,
+          borderColor: 'rgba(13,110,253,0.9)',
+          backgroundColor: 'rgba(13,110,253,0.08)',
+          fill: true
+        }]
+      },
+      options: {
+        responsive:true,
+        plugins: { legend: { display:false } },
+        scales: { y: { ticks: { callback: v => formatNumber(v) } } }
+      }
+    });
+
+    const ctx2 = document.getElementById('chartEntradasSaidas').getContext('2d');
+    if (chartEntradasSaidas) chartEntradasSaidas.destroy();
+    const labels = daily.labels;
+    const entradas = labels.map((lab, i) => daily.values[i] > 0 ? daily.values[i] : 0);
+    const saidas = labels.map((lab, i) => daily.values[i] < 0 ? Math.abs(daily.values[i]) : 0);
+
+    chartEntradasSaidas = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Entradas', data: entradas, stack: 'stack1', backgroundColor: 'rgba(40,167,69,0.85)' },
+          { label: 'Saídas', data: saidas, stack: 'stack1', backgroundColor: 'rgba(220,53,69,0.85)' }
+        ]
+      },
+      options: {
+        responsive:true,
+        plugins: { legend: { position: 'top' } },
+        scales: { y: { ticks: { callback: v => formatNumber(v) } } }
+      }
+    });
+  }
+
+  function exportXLSX() {
+    const { rows } = computeAndRenderTable();
+    if (rows.length === 0) { alert('Sem movimentos para exportar.'); return; }
+    const ws_data = [['Data','Descrição','Tipo','Categoria','Valor','Valor Líquido','Saldo Acumulado']];
+    for (let r of rows) {
+      ws_data.push([r.data, r.descricao, r.tipo, r.categoria, Number(r.valor), Number(r.valor_liquido), Number(r.saldo_acumulado)]);
+    }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Fluxo_de_Caixa');
+    const wbout = XLSX.write(wb, {bookType:'xlsx', type:'binary'});
+    function s2ab(s) {
+      var buf = new ArrayBuffer(s.length);
+      var view = new Uint8Array(buf);
+      for (var i=0;i<s.length;i++) view[i] = s.charCodeAt(i) & 0xFF;
+      return buf;
+    }
+    const blob = new Blob([s2ab(wbout)], {type:"application/octet-stream"});
+    const name = 'Fluxo_de_Caixa_' + (new Date()).toISOString().slice(0,19).replace(/[:T]/g,'_') + '.xlsx';
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function exportCSV() {
+    const { rows } = computeAndRenderTable();
+    if (rows.length === 0) { alert('Sem movimentos para exportar.'); return; }
+    const header = ['Data','Descrição','Tipo','Categoria','Valor','Valor Líquido','Saldo Acumulado'];
+    const lines = [header.join(',')];
+    for (let r of rows) {
+      const cols = [ r.data, `"${(r.descricao||'').replace(/"/g,'""')}"`, r.tipo, `"${(r.categoria||'').replace(/"/g,'""')}"`, r.valor, r.valor_liquido, r.saldo_acumulado ];
+      lines.push(cols.join(','));
+    }
+    const csv = lines.join('\n');
+    const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+    const name = 'Fluxo_de_Caixa_' + (new Date()).toISOString().slice(0,19).replace(/[:T]/g,'_') + '.csv';
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function backupJSON() {
+    const raw = JSON.stringify(movimentos, null, 2);
+    const blob = new Blob([raw], {type:'application/json'});
+    const name = 'Fluxo_de_Caixa_Backup_' + (new Date()).toISOString().slice(0,19).replace(/[:T]/g,'_') + '.json';
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function importFile() {
+    const f = document.getElementById('importFile').files[0];
+    if (!f) { alert('Escolha um ficheiro JSON ou CSV para importar.'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      try {
+        if (f.name.toLowerCase().endsWith('.json')) {
+          const arr = JSON.parse(text);
+          if (Array.isArray(arr)) {
+            movimentos = arr.map(m => ({
+              id: m.id || uid(),
+              data: m.data,
+              descricao: m.descricao || '',
+              tipo: m.tipo || 'Entrada',
+              categoria: m.categoria || '',
+              valor: Number(m.valor || 0)
+            }));
+            saveToStorage();
+            renderAll();
+            alert('Importação JSON concluída.');
+          } else {
+            alert('Ficheiro JSON inválido: deve ser um array de movimentos.');
+          }
+        } else {
+          const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+          if (lines.length < 2) { alert('CSV parece vazio.'); return; }
+          const dataLines = lines.slice(1);
+          const imported = [];
+          for (let ln of dataLines) {
+            const cols = ln.split(',');
+            const data = (cols[0]||'').trim();
+            const descricao = (cols[1]||'').replace(/^"|"$/g,'').trim();
+            const tipo = (cols[2]||'Entrada').trim();
+            const categoria = (cols[3]||'').replace(/^"|"$/g,'').trim();
+            const valor = Number((cols[4]||0));
+            if (!data) continue;
+            imported.push({ id: uid(), data, descricao, tipo, categoria, valor });
+          }
+          if (imported.length>0) {
+            movimentos = imported;
+            saveToStorage();
+            renderAll();
+            alert('Importação CSV concluída.');
+          } else {
+            alert('Nenhum registo válido encontrado no CSV.');
+          }
+        }
+      } catch(err) {
+        console.error(err);
+        alert('Erro ao importar ficheiro: ' + err.message);
+      }
+    };
+    reader.readAsText(f, 'UTF-8');
+  }
+
+  function resetAll() {
+    if (!confirm('Apagar todos os registos do fluxo de caixa? Esta ação não pode ser desfeita.')) return;
+    movimentos = [];
+    saveToStorage();
+    renderAll();
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/[&<>"']/g, function(m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]; });
+  }
+  </script>
+</body>
+</html>
